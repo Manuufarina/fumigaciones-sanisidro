@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, doc, setDoc, onSnapshot } from 'firebase/firestore';
 
-// Firebase Config - Credenciales reales
 const firebaseConfig = {
   apiKey: "AIzaSyA9fsrjhBMB520UGzKgybwuYUlxFTnLy9U",
   authDomain: "fumigaciones-sanisidro.firebaseapp.com",
@@ -29,16 +28,15 @@ const CIRC_NAMES = {
   5: 'Circunscripción 5', 6: 'Circunscripción 6', 7: 'Circunscripción 7', 8: 'Circunscripción 8' 
 };
 
-// Colores EXACTOS del mapa catastral
 const CIRC_COLORS = {
-  1: { fill: 'rgba(244,164,196,0.5)', stroke: '#d64d8a', dark: 'rgba(180,50,100,0.7)', name: 'Rosa' },
-  2: { fill: 'rgba(200,162,200,0.5)', stroke: '#9a4d9a', dark: 'rgba(120,40,120,0.7)', name: 'Violeta' },
-  3: { fill: 'rgba(174,198,232,0.5)', stroke: '#5b8ac2', dark: 'rgba(40,80,150,0.7)', name: 'Azul' },
-  4: { fill: 'rgba(255,247,153,0.5)', stroke: '#c9b834', dark: 'rgba(150,130,0,0.7)', name: 'Amarillo' },
-  5: { fill: 'rgba(248,203,173,0.5)', stroke: '#d4885a', dark: 'rgba(180,90,40,0.7)', name: 'Naranja' },
-  6: { fill: 'rgba(141,193,219,0.5)', stroke: '#4596c7', dark: 'rgba(30,100,160,0.7)', name: 'Celeste' },
-  7: { fill: 'rgba(255,255,196,0.5)', stroke: '#b8b834', dark: 'rgba(130,130,0,0.7)', name: 'Amarillo claro' },
-  8: { fill: 'rgba(169,209,169,0.5)', stroke: '#5a9a5a', dark: 'rgba(40,120,40,0.7)', name: 'Verde' },
+  1: { fill: '#f4a4c4', fillAlpha: 'rgba(244,164,196,0.5)', stroke: '#d64d8a', dark: '#b43264', name: 'Rosa' },
+  2: { fill: '#c8a2c8', fillAlpha: 'rgba(200,162,200,0.5)', stroke: '#9a4d9a', dark: '#782878', name: 'Violeta' },
+  3: { fill: '#aec6e8', fillAlpha: 'rgba(174,198,232,0.5)', stroke: '#5b8ac2', dark: '#285096', name: 'Azul' },
+  4: { fill: '#fff799', fillAlpha: 'rgba(255,247,153,0.5)', stroke: '#c9b834', dark: '#968200', name: 'Amarillo' },
+  5: { fill: '#f8cbad', fillAlpha: 'rgba(248,203,173,0.5)', stroke: '#d4885a', dark: '#b45a28', name: 'Naranja' },
+  6: { fill: '#8dc1db', fillAlpha: 'rgba(141,193,219,0.5)', stroke: '#4596c7', dark: '#1e64a0', name: 'Celeste' },
+  7: { fill: '#ffffc4', fillAlpha: 'rgba(255,255,196,0.5)', stroke: '#b8b834', dark: '#828200', name: 'Amarillo claro' },
+  8: { fill: '#a9d1a9', fillAlpha: 'rgba(169,209,169,0.5)', stroke: '#5a9a5a', dark: '#287828', name: 'Verde' },
 };
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -78,9 +76,9 @@ export default function FumigacionesEditor() {
   const [isOnline, setIsOnline] = useState(true);
   
   const svgRef = useRef(null);
+  const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
 
-  // Cargar datos de Firebase al inicio
   useEffect(() => {
     if (!db) {
       setIsOnline(false);
@@ -94,91 +92,75 @@ export default function FumigacionesEditor() {
     const unsubSections = onSnapshot(doc(db, 'config', 'sections'), (docSnap) => {
       if (docSnap.exists()) {
         setSections(docSnap.data().data || {});
-        setSaveStatus('✓ Sincronizado');
+        setSaveStatus('✓ Sync');
         setTimeout(() => setSaveStatus(''), 2000);
       }
     }, (error) => {
-      console.error('Error loading sections:', error);
+      console.error('Error:', error);
       setIsOnline(false);
     });
 
     const unsubFumigaciones = onSnapshot(doc(db, 'config', 'fumigaciones'), (docSnap) => {
-      if (docSnap.exists()) {
-        setFumigaciones(docSnap.data().data || {});
-      }
+      if (docSnap.exists()) setFumigaciones(docSnap.data().data || {});
     });
 
-    return () => {
-      unsubSections();
-      unsubFumigaciones();
-    };
+    return () => { unsubSections(); unsubFumigaciones(); };
   }, []);
 
   const saveSections = useCallback(async (newSections) => {
     setSections(newSections);
     localStorage.setItem('fumigaciones-sections', JSON.stringify(newSections));
-    
     if (!db) return;
-    
     setSaveStatus('Guardando...');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        await setDoc(doc(db, 'config', 'sections'), { 
-          data: newSections, 
-          updatedAt: new Date().toISOString() 
-        });
+        await setDoc(doc(db, 'config', 'sections'), { data: newSections, updatedAt: new Date().toISOString() });
         setSaveStatus('✓ Guardado');
         setTimeout(() => setSaveStatus(''), 2000);
-      } catch (e) {
-        console.error('Error saving:', e);
-        setSaveStatus('⚠ Error');
-      }
+      } catch (e) { setSaveStatus('⚠ Error'); }
     }, 500);
   }, []);
 
   const saveFumigaciones = useCallback(async (newFumigaciones) => {
     setFumigaciones(newFumigaciones);
     localStorage.setItem('fumigaciones-data', JSON.stringify(newFumigaciones));
-    
     if (!db) return;
-    
     setSaveStatus('Guardando...');
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    
     saveTimeoutRef.current = setTimeout(async () => {
       try {
-        await setDoc(doc(db, 'config', 'fumigaciones'), { 
-          data: newFumigaciones, 
-          updatedAt: new Date().toISOString() 
-        });
+        await setDoc(doc(db, 'config', 'fumigaciones'), { data: newFumigaciones, updatedAt: new Date().toISOString() });
         setSaveStatus('✓ Guardado');
         setTimeout(() => setSaveStatus(''), 2000);
-      } catch (e) {
-        console.error('Error saving:', e);
-        setSaveStatus('⚠ Error');
-      }
+      } catch (e) { setSaveStatus('⚠ Error'); }
     }, 500);
   }, []);
 
   const currentMonth = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; })();
   const isFumigatedInMonth = (sid, m) => (fumigaciones[sid]||[]).some(f => f.date.startsWith(m));
   
+  // CORREGIDO: Calcular coordenadas considerando zoom y pan
   const getMouseCoords = (e) => {
     if (!svgRef.current) return null;
     const svg = svgRef.current;
-    const rect = svg.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * MAP_WIDTH;
-    const y = ((e.clientY - rect.top) / rect.height) * MAP_HEIGHT;
-    return { x: Math.round(x), y: Math.round(y) };
+    const point = svg.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const svgPoint = point.matrixTransform(ctm.inverse());
+    return { x: Math.round(svgPoint.x), y: Math.round(svgPoint.y) };
   };
 
   const handleSvgClick = (e) => {
     if (!editMode || !currentSection) return;
     if (e.altKey || isPanning) return;
+    e.stopPropagation();
     const coords = getMouseCoords(e);
-    if (coords) setCurrentPoints(prev => [...prev, coords]);
+    if (coords && coords.x >= 0 && coords.x <= MAP_WIDTH && coords.y >= 0 && coords.y <= MAP_HEIGHT) {
+      setCurrentPoints(prev => [...prev, coords]);
+    }
   };
 
   const finishPolygon = () => {
@@ -276,33 +258,60 @@ export default function FumigacionesEditor() {
       </header>
 
       <div className="flex-1 flex overflow-hidden">
-        <div className="flex-1 relative overflow-hidden bg-slate-800" onWheel={handleWheel} onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp} style={{ cursor: isPanning ? 'grabbing' : (editMode && currentSection ? 'crosshair' : 'default') }}>
-          <div style={{ transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`, transformOrigin: 'center', transition: isPanning ? 'none' : 'transform 0.1s' }}>
-            <svg ref={svgRef} viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} className="w-full h-full" style={{ maxHeight: 'calc(100vh - 120px)' }} onClick={handleSvgClick}>
-              <image href={MAP_IMAGE} x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} />
-              
-              {showOverlay && Object.entries(sections).map(([id, data]) => {
-                const isSelected = selectedSection === id;
-                const isHovered = hoveredSection === id;
-                const isFumigated = !editMode && isFumigatedInMonth(id, viewMonth);
-                const c = CIRC_COLORS[data.circ];
-                return (
-                  <g key={id}>
-                    <polygon points={data.points} fill={isFumigated ? c.dark : (isHovered || isSelected ? c.fill : c.fill.replace('0.5', '0.25'))} stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)} strokeWidth={isSelected ? 4 : 2} className="cursor-pointer" onClick={(e) => { e.stopPropagation(); if (!editMode) setSelectedSection(id); }} onMouseEnter={() => setHoveredSection(id)} onMouseLeave={() => setHoveredSection(null)} />
-                    <text x={data.center.x} y={data.center.y + 6} textAnchor="middle" fontSize="20" fontWeight="bold" fill={isFumigated ? '#22c55e' : '#fff'} stroke={isFumigated ? 'none' : '#000'} strokeWidth="3" paintOrder="stroke" className="pointer-events-none">{isFumigated ? '✓' : id}</text>
-                  </g>
-                );
-              })}
-              
-              {editMode && currentPoints.length > 0 && (
-                <g>
-                  <polygon points={currentPoints.map(p => `${p.x},${p.y}`).join(' ')} fill={drawColor.fill} stroke={drawColor.stroke} strokeWidth="3" strokeDasharray="10,5" />
-                  {currentPoints.length > 2 && <line x1={currentPoints[currentPoints.length-1].x} y1={currentPoints[currentPoints.length-1].y} x2={currentPoints[0].x} y2={currentPoints[0].y} stroke={drawColor.stroke} strokeWidth="2" strokeDasharray="5,5" opacity="0.7" />}
-                  {currentPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="8" fill={i === 0 ? '#22c55e' : drawColor.stroke} stroke="#fff" strokeWidth="2" />)}
+        <div 
+          ref={containerRef}
+          className="flex-1 relative overflow-hidden bg-slate-800" 
+          onWheel={handleWheel} 
+          onMouseDown={handleMouseDown} 
+          onMouseMove={handleMouseMove} 
+          onMouseUp={handleMouseUp} 
+          onMouseLeave={handleMouseUp} 
+          style={{ cursor: isPanning ? 'grabbing' : (editMode && currentSection ? 'crosshair' : 'default') }}
+        >
+          <svg 
+            ref={svgRef}
+            viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} 
+            className="w-full h-full" 
+            style={{ 
+              maxHeight: 'calc(100vh - 120px)',
+              transform: `scale(${zoomLevel}) translate(${panOffset.x / zoomLevel}px, ${panOffset.y / zoomLevel}px)`,
+              transformOrigin: 'center',
+              transition: isPanning ? 'none' : 'transform 0.1s'
+            }}
+            onClick={handleSvgClick}
+          >
+            <image href={MAP_IMAGE} x="0" y="0" width={MAP_WIDTH} height={MAP_HEIGHT} />
+            
+            {showOverlay && Object.entries(sections).map(([id, data]) => {
+              const isSelected = selectedSection === id;
+              const isHovered = hoveredSection === id;
+              const isFumigated = !editMode && isFumigatedInMonth(id, viewMonth);
+              const c = CIRC_COLORS[data.circ];
+              return (
+                <g key={id}>
+                  <polygon 
+                    points={data.points} 
+                    fill={isFumigated ? c.dark : (isHovered || isSelected ? c.fillAlpha : c.fillAlpha.replace('0.5', '0.25'))} 
+                    stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)} 
+                    strokeWidth={isSelected ? 4 : 2} 
+                    className="cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); if (!editMode) setSelectedSection(id); }}
+                    onMouseEnter={() => setHoveredSection(id)}
+                    onMouseLeave={() => setHoveredSection(null)}
+                  />
+                  <text x={data.center.x} y={data.center.y + 6} textAnchor="middle" fontSize="20" fontWeight="bold" fill={isFumigated ? '#22c55e' : '#fff'} stroke={isFumigated ? 'none' : '#000'} strokeWidth="3" paintOrder="stroke" className="pointer-events-none">{isFumigated ? '✓' : id}</text>
                 </g>
-              )}
-            </svg>
-          </div>
+              );
+            })}
+            
+            {editMode && currentPoints.length > 0 && (
+              <g>
+                <polygon points={currentPoints.map(p => `${p.x},${p.y}`).join(' ')} fill={drawColor.fillAlpha} stroke={drawColor.stroke} strokeWidth="3" strokeDasharray="10,5" />
+                {currentPoints.length > 2 && <line x1={currentPoints[currentPoints.length-1].x} y1={currentPoints[currentPoints.length-1].y} x2={currentPoints[0].x} y2={currentPoints[0].y} stroke={drawColor.stroke} strokeWidth="2" strokeDasharray="5,5" opacity="0.7" />}
+                {currentPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="8" fill={i === 0 ? '#22c55e' : drawColor.stroke} stroke="#fff" strokeWidth="2" />)}
+              </g>
+            )}
+          </svg>
 
           {hoveredSection && !editMode && (
             <div className="absolute top-3 left-3 bg-slate-900/95 px-3 py-2 rounded-lg shadow-xl border border-slate-700 text-sm">
@@ -327,55 +336,97 @@ export default function FumigacionesEditor() {
                   {currentSection ? (
                     <div className="space-y-2">
                       <div className="rounded p-2 border-2" style={{ backgroundColor: drawColor.fill, borderColor: drawColor.stroke }}>
-                        <div className="font-medium" style={{ color: drawColor.stroke }}>Dibujando: {currentSection}</div>
-                        <div className="text-xs" style={{ color: drawColor.stroke }}>{currentPoints.length} puntos</div>
+                        <div className="font-bold text-slate-900">Dibujando: {currentSection}</div>
+                        <div className="text-sm text-slate-800">{currentPoints.length} puntos - Clic en mapa</div>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={finishPolygon} disabled={currentPoints.length < 3} className="flex-1 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 rounded text-sm font-medium">✓ Terminar</button>
-                        <button onClick={undoLastPoint} disabled={currentPoints.length === 0} className="px-2 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 rounded text-sm font-medium">↩</button>
+                        <button onClick={finishPolygon} disabled={currentPoints.length < 3} className="flex-1 px-2 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-600 disabled:text-slate-400 rounded text-sm font-medium">✓ Terminar</button>
+                        <button onClick={undoLastPoint} disabled={currentPoints.length === 0} className="px-2 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-slate-600 disabled:text-slate-400 rounded text-sm font-medium">↩</button>
                         <button onClick={cancelPolygon} className="px-2 py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm font-medium">✕</button>
                       </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
                       <div>
-                        <label className="text-xs text-slate-400">Circunscripción:</label>
-                        <div className="grid grid-cols-4 gap-1 mt-1">
-                          {[1,2,3,4,5,6,7,8].map(c => (
-                            <button key={c} onClick={() => setCurrentCirc(c)} className="px-2 py-2 rounded text-sm font-bold border-2 transition-all" style={{ backgroundColor: currentCirc === c ? CIRC_COLORS[c].fill : 'transparent', borderColor: CIRC_COLORS[c].stroke, color: CIRC_COLORS[c].stroke }}>{c}</button>
-                          ))}
+                        <label className="text-xs text-slate-400 block mb-1">Circunscripción:</label>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1,2,3,4,5,6,7,8].map(c => {
+                            const col = CIRC_COLORS[c];
+                            const isActive = currentCirc === c;
+                            return (
+                              <button 
+                                key={c} 
+                                onClick={() => setCurrentCirc(c)} 
+                                className="px-2 py-2 rounded text-sm font-bold border-2 transition-all"
+                                style={{ 
+                                  backgroundColor: isActive ? col.fill : 'transparent',
+                                  borderColor: col.stroke,
+                                  color: isActive ? '#1e293b' : col.stroke
+                                }}
+                              >
+                                {c}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
-                      <div className="p-2 rounded border-2" style={{ backgroundColor: CIRC_COLORS[currentCirc].fill.replace('0.5', '0.2'), borderColor: CIRC_COLORS[currentCirc].stroke }}>
-                        <div className="text-xs mb-1" style={{ color: CIRC_COLORS[currentCirc].stroke }}>Circ. {currentCirc} ({CIRC_COLORS[currentCirc].name}):</div>
+                      
+                      <div className="p-2 rounded border-2" style={{ backgroundColor: CIRC_COLORS[currentCirc].fill, borderColor: CIRC_COLORS[currentCirc].stroke }}>
+                        <div className="text-sm font-bold text-slate-900 mb-2">
+                          Circ. {currentCirc} - {CIRC_COLORS[currentCirc].name}
+                        </div>
                         <div className="flex flex-wrap gap-1">
-                          {SECTION_LIST[currentCirc]?.map(id => (
-                            <button key={id} onClick={() => setCurrentSection(id)} disabled={!!sections[id]} className="px-2 py-1 rounded text-xs font-medium border" style={{ backgroundColor: sections[id] ? CIRC_COLORS[currentCirc].dark : CIRC_COLORS[currentCirc].fill, color: sections[id] ? '#fff' : CIRC_COLORS[currentCirc].stroke, borderColor: CIRC_COLORS[currentCirc].stroke }}>{id} {sections[id] ? '✓' : ''}</button>
-                          ))}
+                          {SECTION_LIST[currentCirc]?.map(id => {
+                            const isDone = !!sections[id];
+                            const col = CIRC_COLORS[currentCirc];
+                            return (
+                              <button 
+                                key={id} 
+                                onClick={() => !isDone && setCurrentSection(id)}
+                                disabled={isDone}
+                                className="px-2 py-1 rounded text-xs font-bold border transition-all"
+                                style={{
+                                  backgroundColor: isDone ? col.dark : '#fff',
+                                  borderColor: col.stroke,
+                                  color: isDone ? '#fff' : col.stroke,
+                                  opacity: isDone ? 0.8 : 1,
+                                  cursor: isDone ? 'not-allowed' : 'pointer'
+                                }}
+                              >
+                                {id} {isDone ? '✓' : ''}
+                              </button>
+                            );
+                          })}
                         </div>
                       </div>
                     </div>
                   )}
                 </div>
+                
                 <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
                   <h3 className="font-bold mb-2 text-sm">📋 Polígonos ({totalSections})</h3>
-                  <div className="max-h-48 overflow-y-auto space-y-1">
-                    {Object.entries(sections).sort((a,b) => a[0].localeCompare(b[0])).map(([id, data]) => (
-                      <div key={id} className="flex justify-between items-center p-1.5 rounded text-sm" style={{ backgroundColor: CIRC_COLORS[data.circ].fill.replace('0.5', '0.3') }}>
-                        <span style={{ color: CIRC_COLORS[data.circ].stroke }}>{id} <span className="text-xs opacity-70">(C{data.circ})</span></span>
-                        <button onClick={() => deleteSection(id)} className="text-red-400 hover:text-red-300 px-1">🗑</button>
-                      </div>
-                    ))}
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {Object.entries(sections).sort((a,b) => a[0].localeCompare(b[0])).map(([id, data]) => {
+                      const col = CIRC_COLORS[data.circ];
+                      return (
+                        <div key={id} className="flex justify-between items-center p-1.5 rounded text-sm" style={{ backgroundColor: col.fill }}>
+                          <span className="font-medium text-slate-900">{id} <span className="text-xs">(C{data.circ})</span></span>
+                          <button onClick={() => deleteSection(id)} className="text-red-600 hover:text-red-800 px-1 font-bold">🗑</button>
+                        </div>
+                      );
+                    })}
+                    {totalSections === 0 && <div className="text-slate-500 text-sm text-center py-2">Sin polígonos</div>}
                   </div>
                 </div>
-                <div className="bg-blue-900/20 border border-blue-700 rounded-xl p-3">
-                  <h4 className="font-medium text-blue-300 mb-2 text-sm">💡 Cómo dibujar</h4>
-                  <ul className="text-xs text-blue-200 space-y-1">
-                    <li>1. Elegí circunscripción (color)</li>
-                    <li>2. Seleccioná sección</li>
-                    <li>3. Clic en mapa = agregar punto</li>
-                    <li>4. "Terminar" guarda online</li>
-                  </ul>
+                
+                <div className="bg-blue-900/30 border border-blue-600 rounded-xl p-3">
+                  <h4 className="font-bold text-blue-300 mb-2 text-sm">💡 Instrucciones</h4>
+                  <ol className="text-xs text-blue-200 space-y-1 list-decimal list-inside">
+                    <li>Elegí circunscripción (color)</li>
+                    <li>Clic en sección a dibujar</li>
+                    <li>Clic en mapa = agregar punto</li>
+                    <li>"Terminar" guarda online</li>
+                  </ol>
                 </div>
               </>
             ) : (
@@ -429,17 +480,17 @@ export default function FumigacionesEditor() {
                       if (secs.length === 0) return null;
                       const fum = secs.filter(([id]) => isFumigatedInMonth(id, viewMonth)).length;
                       const pct = Math.round((fum / secs.length) * 100);
-                      const color = CIRC_COLORS[c];
+                      const col = CIRC_COLORS[c];
                       return (
                         <div key={c} className="mb-2">
                           <div className="flex justify-between items-center text-xs mb-1">
-                            <span style={{ color: color.stroke }}>C{c} ({color.name})</span>
+                            <span style={{ color: col.stroke, fontWeight: 'bold' }}>C{c} {col.name}</span>
                             <div className="flex items-center gap-2">
                               <span>{fum}/{secs.length}</span>
-                              {fum < secs.length && <button onClick={() => markAllInCirc(c)} className="text-xs px-1.5 py-0.5 rounded" style={{ backgroundColor: color.dark, color: '#fff' }}>✓ Todas</button>}
+                              {fum < secs.length && <button onClick={() => markAllInCirc(c)} className="text-xs px-1.5 py-0.5 rounded text-white" style={{ backgroundColor: col.dark }}>✓ Todas</button>}
                             </div>
                           </div>
-                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden"><div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: color.stroke }} /></div>
+                          <div className="h-2 bg-slate-700 rounded-full overflow-hidden"><div className="h-full transition-all" style={{ width: `${pct}%`, backgroundColor: col.stroke }} /></div>
                         </div>
                       );
                     })}
