@@ -373,7 +373,7 @@ export default function FumigacionesEditor() {
                     stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)} 
                     strokeWidth={isSelected ? 4 : 2} 
                     className="cursor-pointer"
-                    onClick={(e) => { e.stopPropagation(); if (!editMode) setSelectedSection(id); }}
+                    onClick={(e) => { if (addPointMode) return; e.stopPropagation(); if (!editMode) setSelectedSection(id); }}
                     onMouseEnter={() => setHoveredSection(id)}
                     onMouseLeave={() => setHoveredSection(null)}
                   />
@@ -405,7 +405,7 @@ export default function FumigacionesEditor() {
                     stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)}
                     strokeWidth={isSelected ? 4 : 3}
                     className="cursor-pointer transition-all"
-                    onClick={(e) => { e.stopPropagation(); if (!editMode) { setSelectedPoint(pointId); setSelectedSection(null); } }}
+                    onClick={(e) => { if (addPointMode) return; e.stopPropagation(); if (!editMode) { setSelectedPoint(pointId); setSelectedSection(null); } }}
                     onMouseEnter={() => setHoveredPoint(pointId)}
                     onMouseLeave={() => setHoveredPoint(null)}
                   />
