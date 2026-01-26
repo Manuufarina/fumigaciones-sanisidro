@@ -74,7 +74,15 @@ export default function FumigacionesEditor() {
   const [showOverlay, setShowOverlay] = useState(true);
   const [saveStatus, setSaveStatus] = useState('');
   const [isOnline, setIsOnline] = useState(true);
-  
+
+  // Estados para puntos específicos
+  const [mapPoints, setMapPoints] = useState({});
+  const [selectedPoint, setSelectedPoint] = useState(null);
+  const [addPointMode, setAddPointMode] = useState(false);
+  const [newPointName, setNewPointName] = useState('');
+  const [newPointCirc, setNewPointCirc] = useState(1);
+  const [hoveredPoint, setHoveredPoint] = useState(null);
+
   const svgRef = useRef(null);
   const containerRef = useRef(null);
   const saveTimeoutRef = useRef(null);
@@ -86,6 +94,8 @@ export default function FumigacionesEditor() {
       const savedFumigaciones = localStorage.getItem('fumigaciones-data');
       if (savedSections) setSections(JSON.parse(savedSections));
       if (savedFumigaciones) setFumigaciones(JSON.parse(savedFumigaciones));
+      const savedMapPoints = localStorage.getItem('fumigaciones-mappoints');
+      if (savedMapPoints) setMapPoints(JSON.parse(savedMapPoints));
       return;
     }
 
@@ -104,7 +114,11 @@ export default function FumigacionesEditor() {
       if (docSnap.exists()) setFumigaciones(docSnap.data().data || {});
     });
 
-    return () => { unsubSections(); unsubFumigaciones(); };
+    const unsubMapPoints = onSnapshot(doc(db, 'config', 'mappoints'), (docSnap) => {
+      if (docSnap.exists()) setMapPoints(docSnap.data().data || {});
+    });
+
+    return () => { unsubSections(); unsubFumigaciones(); unsubMapPoints(); };
   }, []);
 
   const saveSections = useCallback(async (newSections) => {
@@ -137,6 +151,23 @@ export default function FumigacionesEditor() {
     }, 500);
   }, []);
 
+  
+
+  const saveMapPoints = useCallback(async (newMapPoints) => {
+    setMapPoints(newMapPoints);
+    localStorage.setItem('fumigaciones-mappoints', JSON.stringify(newMapPoints));
+    if (!db) return;
+    setSaveStatus('Guardando...');
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(async () => {
+      try {
+        await setDoc(doc(db, 'config', 'mappoints'), { data: newMapPoints, updatedAt: new Date().toISOString() });
+        setSaveStatus('✓ Guardado');
+        setTimeout(() => setSaveStatus(''), 2000);
+      } catch (e) { setSaveStatus('⚠ Error'); }
+    }, 500);
+  }, []);
+
   const currentMonth = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,'0')}`; })();
   const isFumigatedInMonth = (sid, m) => (fumigaciones[sid]||[]).some(f => f.date.startsWith(m));
   
@@ -154,6 +185,19 @@ export default function FumigacionesEditor() {
   };
 
   const handleSvgClick = (e) => {
+    // Modo agregar punto específico
+    if (addPointMode && newPointName.trim()) {
+      if (e.altKey || isPanning) return;
+      e.stopPropagation();
+      const coords = getMouseCoords(e);
+      if (coords && coords.x >= 0 && coords.x <= MAP_WIDTH && coords.y >= 0 && coords.y <= MAP_HEIGHT) {
+        const pointId = `point_${Date.now()}`;
+        saveMapPoints({ ...mapPoints, [pointId]: { x: coords.x, y: coords.y, name: newPointName.trim(), circ: newPointCirc } });
+        setNewPointName('');
+        setAddPointMode(false);
+      }
+      return;
+    }
     if (!editMode || !currentSection) return;
     if (e.altKey || isPanning) return;
     e.stopPropagation();
@@ -198,6 +242,40 @@ export default function FumigacionesEditor() {
     toMark.forEach(id => { newFum[id] = [...(fumigaciones[id]||[]), { date: today, notes: `Circ. ${circ}`, timestamp: Date.now() }]; });
     saveFumigaciones(newFum);
   };
+
+  // Funciones para puntos específicos
+  const deleteMapPoint = (pointId) => {
+    if (confirm(`¿Eliminar punto "${mapPoints[pointId]?.name}"?`)) {
+      const n = { ...mapPoints };
+      delete n[pointId];
+      saveMapPoints(n);
+      const newFum = { ...fumigaciones };
+      delete newFum[`point_${pointId}`];
+      saveFumigaciones(newFum);
+      if (selectedPoint === pointId) setSelectedPoint(null);
+    }
+  };
+
+  const addPointFumigacion = () => {
+    if (!selectedPoint || !newDate) return;
+    const fumKey = `point_${selectedPoint}`;
+    saveFumigaciones({
+      ...fumigaciones,
+      [fumKey]: [...(fumigaciones[fumKey]||[]), { date: newDate, notes: newNotes, timestamp: Date.now() }].sort((a,b) => new Date(b.date)-new Date(a.date))
+    });
+    setNewDate(''); setNewNotes('');
+  };
+
+  const deletePointFumigacion = (pointId, ts) => {
+    const fumKey = `point_${pointId}`;
+    saveFumigaciones({ ...fumigaciones, [fumKey]: (fumigaciones[fumKey]||[]).filter(f => f.timestamp !== ts) });
+  };
+
+  const isPointFumigatedInMonth = (pointId, m) => {
+    const fumKey = `point_${pointId}`;
+    return (fumigaciones[fumKey]||[]).some(f => f.date.startsWith(m));
+  };
+
 
   const formatDate = (s) => { const [y,m,d] = s.split('-'); return `${d}/${m}/${y}`; };
   const parseViewMonth = () => { const [y,m] = viewMonth.split('-'); return `${MONTHS[parseInt(m)-1]} ${y}`; };
@@ -311,6 +389,33 @@ export default function FumigacionesEditor() {
                 {currentPoints.map((p, i) => <circle key={i} cx={p.x} cy={p.y} r="8" fill={i === 0 ? '#22c55e' : drawColor.stroke} stroke="#fff" strokeWidth="2" />)}
               </g>
             )}
+            {/* Renderizado de puntos específicos */}
+            {showOverlay && Object.entries(mapPoints).map(([pointId, point]) => {
+              const isSelected = selectedPoint === pointId;
+              const isHovered = hoveredPoint === pointId;
+              const isFumigated = !editMode && isPointFumigatedInMonth(pointId, viewMonth);
+              const c = CIRC_COLORS[point.circ];
+              return (
+                <g key={pointId}>
+                  <circle
+                    cx={point.x}
+                    cy={point.y}
+                    r={isSelected || isHovered ? 18 : 15}
+                    fill={isFumigated ? c.dark : (isHovered || isSelected ? c.fill : c.fillAlpha)}
+                    stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)}
+                    strokeWidth={isSelected ? 4 : 3}
+                    className="cursor-pointer transition-all"
+                    onClick={(e) => { e.stopPropagation(); if (!editMode) { setSelectedPoint(pointId); setSelectedSection(null); } }}
+                    onMouseEnter={() => setHoveredPoint(pointId)}
+                    onMouseLeave={() => setHoveredPoint(null)}
+                  />
+                  <text x={point.x} y={point.y + 5} textAnchor="middle" fontSize="12" fontWeight="bold" fill={isFumigated ? '#22c55e' : '#fff'} stroke={isFumigated ? 'none' : '#000'} strokeWidth="2" paintOrder="stroke" className="pointer-events-none">
+                    {isFumigated ? '✓' : '📍'}
+                  </text>
+                </g>
+              );
+            })}
+
           </svg>
 
           {hoveredSection && !editMode && (
@@ -320,6 +425,14 @@ export default function FumigacionesEditor() {
               {isFumigatedInMonth(hoveredSection, viewMonth) && <div className="text-emerald-400 text-xs mt-1">✓ Fumigada</div>}
             </div>
           )}
+          {hoveredPoint && !editMode && (
+            <div className="absolute top-3 left-3 bg-slate-900/95 px-3 py-2 rounded-lg shadow-xl border border-slate-700 text-sm">
+              <div className="font-bold">📍 {mapPoints[hoveredPoint]?.name}</div>
+              <div className="text-slate-400 text-xs">{CIRC_NAMES[mapPoints[hoveredPoint]?.circ]}</div>
+              {isPointFumigatedInMonth(hoveredPoint, viewMonth) && <div className="text-emerald-400 text-xs mt-1">✓ Fumigado</div>}
+            </div>
+          )}
+
 
           <div className="absolute bottom-3 right-3 flex flex-col gap-1">
             <button onClick={() => setZoomLevel(p => Math.min(5, p + 0.2))} className="w-10 h-10 bg-slate-800/90 hover:bg-slate-700 rounded text-xl font-bold border border-slate-600">+</button>
@@ -419,6 +532,50 @@ export default function FumigacionesEditor() {
                   </div>
                 </div>
                 
+
+                <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
+                  <h3 className="font-bold mb-3">📍 Agregar punto</h3>
+                  {addPointMode ? (
+                    <div className="space-y-2">
+                      <div className="rounded p-2 border-2 border-cyan-500 bg-cyan-900/30">
+                        <div className="font-bold text-cyan-300">Modo agregar punto</div>
+                        <div className="text-sm text-cyan-200">Clic en el mapa para ubicar</div>
+                      </div>
+                      <input type="text" value={newPointName} onChange={(e) => setNewPointName(e.target.value)} placeholder="Nombre del punto..." className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm" />
+                      <div>
+                        <label className="text-xs text-slate-400 block mb-1">Circunscripción:</label>
+                        <div className="grid grid-cols-4 gap-1">
+                          {[1,2,3,4,5,6,7,8].map(c => {
+                            const col = CIRC_COLORS[c];
+                            return (
+                              <button key={c} onClick={() => setNewPointCirc(c)} className="p-1.5 rounded text-xs font-bold transition-all" style={{ backgroundColor: newPointCirc === c ? col.fill : col.fillAlpha, borderColor: col.stroke, border: '2px solid', color: newPointCirc === c ? '#1e293b' : col.stroke }}>{c}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <button onClick={() => { setAddPointMode(false); setNewPointName(''); }} className="w-full py-1.5 bg-red-600 hover:bg-red-500 rounded text-sm font-medium">✕ Cancelar</button>
+                    </div>
+                  ) : (
+                    <button onClick={() => setAddPointMode(true)} className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 rounded text-sm font-medium">+ Agregar punto específico</button>
+                  )}
+                  {Object.keys(mapPoints).length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-slate-700">
+                      <h4 className="text-xs text-slate-400 mb-2">Puntos ({Object.keys(mapPoints).length}):</h4>
+                      <div className="max-h-32 overflow-y-auto space-y-1">
+                        {Object.entries(mapPoints).map(([id, point]) => {
+                          const col = CIRC_COLORS[point.circ];
+                          return (
+                            <div key={id} className="flex justify-between items-center p-1.5 rounded text-sm" style={{ backgroundColor: col.fillAlpha }}>
+                              <span className="font-medium text-white text-xs">📍 {point.name}</span>
+                              <button onClick={() => deleteMapPoint(id)} className="text-red-400 hover:text-red-300 px-1 font-bold">🗑</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                
                 <div className="bg-blue-900/30 border border-blue-600 rounded-xl p-3">
                   <h4 className="font-bold text-blue-300 mb-2 text-sm">💡 Instrucciones</h4>
                   <ol className="text-xs text-blue-200 space-y-1 list-decimal list-inside">
@@ -455,6 +612,36 @@ export default function FumigacionesEditor() {
                             <div key={f.timestamp} className="flex justify-between text-xs p-1.5 bg-slate-700/50 rounded">
                               <span>{formatDate(f.date)} {f.notes && `- ${f.notes}`}</span>
                               <button onClick={() => deleteFumigacion(selectedSection, f.timestamp)} className="text-red-400">🗑</button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : selectedPoint && mapPoints[selectedPoint] ? (
+                  <div className="bg-slate-800 rounded-xl p-3 border border-slate-700">
+                    <div className="flex justify-between mb-3">
+                      <div><h3 className="text-lg font-bold">📍 {mapPoints[selectedPoint].name}</h3><p className="text-xs text-slate-400">{CIRC_NAMES[mapPoints[selectedPoint].circ]}</p></div>
+                      <button onClick={() => setSelectedPoint(null)} className="text-slate-400 hover:text-white text-xl">×</button>
+                    </div>
+                    {isPointFumigatedInMonth(selectedPoint, viewMonth) ? (
+                      <div className="bg-emerald-900/30 border border-emerald-600 rounded p-2 mb-3"><div className="text-emerald-400 text-sm">✓ Fumigado en {parseViewMonth()}</div></div>
+                    ) : (
+                      <div className="bg-amber-900/30 border border-amber-600 rounded p-2 mb-3"><div className="text-amber-400 text-sm">⚠ Pendiente</div></div>
+                    )}
+                    <div className="space-y-2 p-2 bg-slate-700/40 rounded">
+                      <input type="date" value={newDate} onChange={(e) => setNewDate(e.target.value)} className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm" />
+                      <input type="text" value={newNotes} onChange={(e) => setNewNotes(e.target.value)} placeholder="Notas..." className="w-full bg-slate-700 border border-slate-600 rounded px-2 py-1.5 text-sm" />
+                      <button onClick={addPointFumigacion} disabled={!newDate} className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 disabled:bg-slate-600 rounded text-sm font-medium">+ Registrar</button>
+                    </div>
+                    {fumigaciones[`point_${selectedPoint}`]?.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-700">
+                        <h4 className="text-xs text-slate-300 mb-2">Historial:</h4>
+                        <div className="max-h-32 overflow-y-auto space-y-1">
+                          {fumigaciones[`point_${selectedPoint}`].map(f => (
+                            <div key={f.timestamp} className="flex justify-between text-xs p-1.5 bg-slate-700/50 rounded">
+                              <span>{formatDate(f.date)} {f.notes && `- ${f.notes}`}</span>
+                              <button onClick={() => deletePointFumigacion(selectedPoint, f.timestamp)} className="text-red-400">🗑</button>
                             </div>
                           ))}
                         </div>
