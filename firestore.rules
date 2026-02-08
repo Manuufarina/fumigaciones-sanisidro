@@ -1,0 +1,18 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Colección "config": acceso público de lectura y escritura
+    // (sections, fumigaciones, mappoints)
+    match /config/{document} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Denegar acceso a cualquier otra colección por defecto
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
