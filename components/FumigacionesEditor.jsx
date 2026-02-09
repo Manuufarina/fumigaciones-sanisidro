@@ -88,14 +88,16 @@ export default function FumigacionesEditor() {
   const saveTimeoutRef = useRef(null);
 
   useEffect(() => {
+    // Cargar datos de localStorage primero para mostrar datos inmediatamente
+    const savedSections = localStorage.getItem('fumigaciones-sections');
+    const savedFumigaciones = localStorage.getItem('fumigaciones-data');
+    const savedMapPoints = localStorage.getItem('fumigaciones-mappoints');
+    if (savedSections) setSections(JSON.parse(savedSections));
+    if (savedFumigaciones) setFumigaciones(JSON.parse(savedFumigaciones));
+    if (savedMapPoints) setMapPoints(JSON.parse(savedMapPoints));
+
     if (!db) {
       setIsOnline(false);
-      const savedSections = localStorage.getItem('fumigaciones-sections');
-      const savedFumigaciones = localStorage.getItem('fumigaciones-data');
-      if (savedSections) setSections(JSON.parse(savedSections));
-      if (savedFumigaciones) setFumigaciones(JSON.parse(savedFumigaciones));
-      const savedMapPoints = localStorage.getItem('fumigaciones-mappoints');
-      if (savedMapPoints) setMapPoints(JSON.parse(savedMapPoints));
       return;
     }
 
@@ -112,10 +114,14 @@ export default function FumigacionesEditor() {
 
     const unsubFumigaciones = onSnapshot(doc(db, 'config', 'fumigaciones'), (docSnap) => {
       if (docSnap.exists()) setFumigaciones(docSnap.data().data || {});
+    }, (error) => {
+      console.error('Error fumigaciones:', error);
     });
 
     const unsubMapPoints = onSnapshot(doc(db, 'config', 'mappoints'), (docSnap) => {
       if (docSnap.exists()) setMapPoints(docSnap.data().data || {});
+    }, (error) => {
+      console.error('Error mappoints:', error);
     });
 
     return () => { unsubSections(); unsubFumigaciones(); unsubMapPoints(); };
@@ -373,7 +379,7 @@ export default function FumigacionesEditor() {
                     stroke={isSelected ? '#fbbf24' : (isFumigated ? '#22c55e' : c.stroke)} 
                     strokeWidth={isSelected ? 4 : 2} 
                     className="cursor-pointer"
-                    onClick={(e) => { e.stopPropagation(); if (!editMode) setSelectedSection(id); }}
+                    onClick={(e) => { if (!addPointMode) e.stopPropagation(); if (!editMode) setSelectedSection(id); }}
                     onMouseEnter={() => setHoveredSection(id)}
                     onMouseLeave={() => setHoveredSection(null)}
                   />
